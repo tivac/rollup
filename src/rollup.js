@@ -3,6 +3,7 @@ import { writeFile } from './utils/fs.js';
 import { assign, keys } from './utils/object.js';
 import { mapSequence } from './utils/promise.js';
 import validateKeys from './utils/validateKeys.js';
+import ensureArray from './utils/ensureArray.js';
 import SOURCEMAPPING_URL from './utils/sourceMappingURL.js';
 import Bundle from './Bundle.js';
 
@@ -52,64 +53,71 @@ export function rollup ( options ) {
 		return Promise.reject( error );
 	}
 
-	const bundle = new Bundle( options );
+	const entries = ensureArray(options.entry);
 
-	return bundle.build().then( () => {
-		function generate ( options ) {
-			const rendered = bundle.render( options );
+	return Promise.all( entries.map( entry => {
+		const bundle = new Bundle( assign( { }, options, { entry } ) );
 
-			bundle.plugins.forEach( plugin => {
-				if ( plugin.ongenerate ) {
-					plugin.ongenerate( assign({
-						bundle: result
-					}, options ), rendered);
-				}
-			});
+		return bundle.build().then( () => {
+			function generate ( options ) {
+				const rendered = bundle.render( options );
 
-			return rendered;
-		}
+				bundle.plugins.forEach( plugin => {
+					if ( plugin.ongenerate ) {
+						plugin.ongenerate( assign({
+							bundle: result
+						}, options ), rendered);
+					}
+				});
 
-		const result = {
-			imports: bundle.externalModules.map( module => module.id ),
-			exports: keys( bundle.entryModule.exports ),
-			modules: bundle.orderedModules.map( module => module.toJSON() ),
+				return rendered;
+			}
 
-			generate,
-			write: options => {
-				if ( !options || !options.dest ) {
-					throw new Error( 'You must supply options.dest to bundle.write' );
-				}
+			const result = {
+				imports: bundle.externalModules.map( module => module.id ),
+				exports: keys( bundle.entryModule.exports ),
+				modules: bundle.orderedModules.map( module => module.toJSON() ),
 
-				const dest = options.dest;
-				const output = generate( options );
-				let { code, map } = output;
-
-				const promises = [];
-
-				if ( options.sourceMap ) {
-					let url;
-
-					if ( options.sourceMap === 'inline' ) {
-						url = map.toUrl();
-					} else {
-						url = `${basename( dest )}.map`;
-						promises.push( writeFile( dest + '.map', map.toString() ) );
+				entry,
+				generate,
+				
+				write: options => {
+					if ( !options || !options.dest ) {
+						throw new Error( 'You must supply options.dest to bundle.write' );
 					}
 
-					code += `\n//# ${SOURCEMAPPING_URL}=${url}\n`;
-				}
+					const dest = options.dest;
+					const output = generate( options );
+					let { code, map } = output;
 
-				promises.push( writeFile( dest, code ) );
-				return Promise.all( promises ).then( () => {
-					return mapSequence( bundle.plugins.filter( plugin => plugin.onwrite ), plugin => {
-						return Promise.resolve( plugin.onwrite( assign({
-							bundle: result
-						}, options ), output));
+					const promises = [];
+
+					if ( options.sourceMap ) {
+						let url;
+
+						if ( options.sourceMap === 'inline' ) {
+							url = map.toUrl();
+						} else {
+							url = `${basename( dest )}.map`;
+							promises.push( writeFile( dest + '.map', map.toString() ) );
+						}
+
+						code += `\n//# ${SOURCEMAPPING_URL}=${url}\n`;
+					}
+
+					promises.push( writeFile( dest, code ) );
+					return Promise.all( promises ).then( () => {
+						return mapSequence( bundle.plugins.filter( plugin => plugin.onwrite ), plugin => {
+							return Promise.resolve( plugin.onwrite( assign({
+								bundle: result
+							}, options ), output));
+						});
 					});
-				});
-			}
-		};
+				}
+			};
 
-		return result;
-	});
+			return result;
+		});
+	}))
+	.then( results => results.length === 1 ? results[0] : results );
 }
