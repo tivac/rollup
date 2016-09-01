@@ -41,6 +41,8 @@ const ALLOWED_KEYS = [
 	'useStrict'
 ];
 
+export { Bundle };
+
 function checkOptions ( options ) {
 	if ( !options || !options.entry ) {
 		return new Error( 'You must supply options.entry to rollup' );
@@ -70,6 +72,15 @@ export function rollup ( options ) {
 		function generate ( options ) {
 			timeStart( '--GENERATE--' );
 
+			bundle.plugins.forEach( plugin => {
+				if ( plugin.onbeforegenerate ) {
+					plugin.onbeforegenerate( assign({
+						bundle,
+						result
+					}, options ), rendered);
+				}
+			});
+
 			const rendered = bundle.render( options );
 
 			timeEnd( '--GENERATE--' );
@@ -77,7 +88,8 @@ export function rollup ( options ) {
 			bundle.plugins.forEach( plugin => {
 				if ( plugin.ongenerate ) {
 					plugin.ongenerate( assign({
-						bundle: result
+						bundle,
+						result
 					}, options ), rendered);
 				}
 			});
