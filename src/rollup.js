@@ -72,12 +72,13 @@ export function rollup ( options ) {
 		function generate ( options ) {
 			timeStart( '--GENERATE--' );
 
+			const args = assign({
+				bundle : result
+			}, options );
+			
 			bundle.plugins.forEach( plugin => {
 				if ( plugin.onbeforegenerate ) {
-					plugin.onbeforegenerate( assign({
-						bundle,
-						result
-					}, options ), rendered);
+					plugin.onbeforegenerate( args, bundle);
 				}
 			});
 
@@ -87,10 +88,7 @@ export function rollup ( options ) {
 
 			bundle.plugins.forEach( plugin => {
 				if ( plugin.ongenerate ) {
-					plugin.ongenerate( assign({
-						bundle,
-						result
-					}, options ), rendered);
+					plugin.ongenerate( args, rendered);
 				}
 			});
 
