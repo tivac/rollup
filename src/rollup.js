@@ -62,23 +62,15 @@ export function process ( bundle ) {
 	function generate ( options ) {
 		timeStart( '--GENERATE--' );
 
-		const args = assign({
-			bundle : result
-		}, options );
-		
-		bundle.plugins.forEach( plugin => {
-			if ( plugin.onbeforegenerate ) {
-				plugin.onbeforegenerate( args, bundle);
-			}
-		});
-
 		const rendered = bundle.render( options );
 
 		timeEnd( '--GENERATE--' );
 
 		bundle.plugins.forEach( plugin => {
 			if ( plugin.ongenerate ) {
-				plugin.ongenerate( args, rendered);
+				plugin.ongenerate( assign({
+					bundle: result
+				}, options ), rendered);
 			}
 		});
 
@@ -86,6 +78,7 @@ export function process ( bundle ) {
 
 		return rendered;
 	}
+
 	
 	const result = {
 		imports: bundle.externalModules.map( module => module.id ),
