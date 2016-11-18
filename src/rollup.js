@@ -58,6 +58,80 @@ function checkOptions ( options ) {
 	return null;
 }
 
+export function process ( bundle ) {
+	function generate ( options ) {
+		timeStart( '--GENERATE--' );
+
+		const args = assign({
+			bundle : result
+		}, options );
+		
+		bundle.plugins.forEach( plugin => {
+			if ( plugin.onbeforegenerate ) {
+				plugin.onbeforegenerate( args, bundle);
+			}
+		});
+
+		const rendered = bundle.render( options );
+
+		timeEnd( '--GENERATE--' );
+
+		bundle.plugins.forEach( plugin => {
+			if ( plugin.ongenerate ) {
+				plugin.ongenerate( args, rendered);
+			}
+		});
+
+		flushTime();
+
+		return rendered;
+	}
+	
+	const result = {
+		imports: bundle.externalModules.map( module => module.id ),
+		exports: keys( bundle.entryModule.exports ),
+		modules: bundle.orderedModules.map( module => module.toJSON() ),
+
+		generate: generate.bind(null, bundle),
+		
+		write: options => {
+			if ( !options || !options.dest ) {
+				throw new Error( 'You must supply options.dest to bundle.write' );
+			}
+
+			const dest = options.dest;
+			const output = generate( options );
+			let { code, map } = output;
+
+			const promises = [];
+
+			if ( options.sourceMap ) {
+				let url;
+
+				if ( options.sourceMap === 'inline' ) {
+					url = map.toUrl();
+				} else {
+					url = `${basename( dest )}.map`;
+					promises.push( writeFile( dest + '.map', map.toString() ) );
+				}
+
+				code += `//# ${SOURCEMAPPING_URL}=${url}\n`;
+			}
+
+			promises.push( writeFile( dest, code ) );
+			return Promise.all( promises ).then( () => {
+				return mapSequence( bundle.plugins.filter( plugin => plugin.onwrite ), plugin => {
+					return Promise.resolve( plugin.onwrite( assign({
+						bundle: result
+					}, options ), output));
+				});
+			});
+		}
+	};
+
+	return result;
+}
+
 export function rollup ( options ) {
 	const error = checkOptions ( options );
 	if ( error ) return Promise.reject( error );
@@ -69,75 +143,6 @@ export function rollup ( options ) {
 	return bundle.build().then( () => {
 		timeEnd( '--BUILD--' );
 
-		function generate ( options ) {
-			timeStart( '--GENERATE--' );
-
-			const args = assign({
-				bundle : result
-			}, options );
-			
-			bundle.plugins.forEach( plugin => {
-				if ( plugin.onbeforegenerate ) {
-					plugin.onbeforegenerate( args, bundle);
-				}
-			});
-
-			const rendered = bundle.render( options );
-
-			timeEnd( '--GENERATE--' );
-
-			bundle.plugins.forEach( plugin => {
-				if ( plugin.ongenerate ) {
-					plugin.ongenerate( args, rendered);
-				}
-			});
-
-			flushTime();
-
-			return rendered;
-		}
-
-		const result = {
-			imports: bundle.externalModules.map( module => module.id ),
-			exports: keys( bundle.entryModule.exports ),
-			modules: bundle.orderedModules.map( module => module.toJSON() ),
-
-			generate,
-			write: options => {
-				if ( !options || !options.dest ) {
-					throw new Error( 'You must supply options.dest to bundle.write' );
-				}
-
-				const dest = options.dest;
-				const output = generate( options );
-				let { code, map } = output;
-
-				const promises = [];
-
-				if ( options.sourceMap ) {
-					let url;
-
-					if ( options.sourceMap === 'inline' ) {
-						url = map.toUrl();
-					} else {
-						url = `${basename( dest )}.map`;
-						promises.push( writeFile( dest + '.map', map.toString() ) );
-					}
-
-					code += `//# ${SOURCEMAPPING_URL}=${url}\n`;
-				}
-
-				promises.push( writeFile( dest, code ) );
-				return Promise.all( promises ).then( () => {
-					return mapSequence( bundle.plugins.filter( plugin => plugin.onwrite ), plugin => {
-						return Promise.resolve( plugin.onwrite( assign({
-							bundle: result
-						}, options ), output));
-					});
-				});
-			}
-		};
-
-		return result;
+		return process( bundle );
 	});
 }
