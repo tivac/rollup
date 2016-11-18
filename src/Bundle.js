@@ -183,6 +183,15 @@ export default class Bundle {
 			});
 	}
 
+	remove (id) {
+		this.moduleById.delete(id);
+
+		this.modules.splice(
+			this.modules.findIndex((mod) => (mod.id === id)),
+			1
+		);
+	}
+
 	deconflict () {
 		const used = blank();
 
