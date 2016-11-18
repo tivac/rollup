@@ -235,7 +235,7 @@ export default class Bundle {
 
 	fetchModule ( id, importer ) {
 		// short-circuit cycles
-		if ( this.moduleById.has( id ) ) return null;
+		if ( this.moduleById.has( id ) ) return Promise.resolve( this.moduleById.get( id ) );
 		this.moduleById.set( id, null );
 
 		return this.load( id )
